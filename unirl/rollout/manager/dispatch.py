@@ -12,8 +12,26 @@ if TYPE_CHECKING:
 
 _WORKER_CONTROL_CONCURRENCY = 2
 
+AFFINITY_POLICIES = ("least_loaded", "group_packing")
+DEFAULT_AFFINITY_POLICY = "least_loaded"
+
 
 Launch = Callable[["Sample"], Any]
+
+
+def validate_affinity_policy(policy: str) -> str:
+    """Return ``policy`` when it names a dispatch policy, else raise."""
+    if policy not in AFFINITY_POLICIES:
+        raise ValueError(f"affinity_policy must be one of {AFFINITY_POLICIES}; got {policy!r}")
+    return policy
+
+
+def _single_root_id(sample: "Sample") -> Optional[str]:
+    """The root id a single-root task shares with its siblings, else None."""
+    if not sample.parts:
+        return None
+    roots = set(sample.root_group_ids(0))
+    return roots.pop() if len(roots) == 1 else None
 
 
 @dataclass(frozen=True)
@@ -33,9 +51,13 @@ class RolloutPool:
         self,
         launchers: Sequence[Launch],
         capacities: Sequence[int],
+        *,
+        affinity_policy: str = DEFAULT_AFFINITY_POLICY,
     ) -> None:
+        validate_affinity_policy(affinity_policy)
         self._launchers = list(launchers)
         self._capacities = [int(capacity) for capacity in capacities]
+        self._affinity_policy = affinity_policy
         if not self._launchers:
             raise ValueError("RolloutPool requires at least one launcher")
         if len(self._launchers) != len(self._capacities):
@@ -208,6 +230,19 @@ class RolloutPool:
             plan.append((sequence, index, task))
             self._reserved[index] += 1
             load[index] += 1
+            if self._affinity_policy != "group_packing":
+                continue
+            root = _single_root_id(task)
+            # Contiguous siblings ride the same launcher so the engine's prefix cache serves the
+            # shared prompt once; the remainder spills to the next most-free launcher next round.
+            while root is not None and load[index] < self._capacities[index] and self._queue:
+                tail_sequence, tail_task = self._queue.popleft()
+                if _single_root_id(tail_task) != root:
+                    self._queue.appendleft((tail_sequence, tail_task))
+                    break
+                plan.append((tail_sequence, index, tail_task))
+                self._reserved[index] += 1
+                load[index] += 1
         return plan
 
     def _execute_launches(self, plan: List[tuple[int, int, "Sample"]]) -> bool:
@@ -276,4 +311,11 @@ def validate_worker_inflight(
         )
 
 
-__all__ = ["RolloutPool", "required_worker_concurrency", "validate_worker_inflight"]
+__all__ = [
+    "AFFINITY_POLICIES",
+    "DEFAULT_AFFINITY_POLICY",
+    "RolloutPool",
+    "required_worker_concurrency",
+    "validate_affinity_policy",
+    "validate_worker_inflight",
+]

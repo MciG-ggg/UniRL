@@ -198,6 +198,19 @@ enabled, which UniRL's rollout backend does not do.
 - **A resolve/route failure poisons the `RolloutManager`** — samples may already be
   lost, so every later call (including `empty` / `counts`) re-raises the original
   error rather than reporting clean state; only `close()` stays safe.
+- **`affinity_policy` trades per-slot balance for prefix reuse.** The default
+  `least_loaded` fills the most-free slot one task at a time, which round-robins a
+  prompt's `K` agentic siblings across `K` slots and makes every sibling prefill the
+  shared prompt. `group_packing` keeps popping the head task until the launcher is
+  full or the next task carries a different root, so a contiguous sibling run rides
+  one launcher and the engine's prefix cache serves the prompt once. It only reads
+  queue order — it never reorders tasks, and multi-root batch tasks (whose
+  `roots_of` is not a single id) still go one per slot, so there is no
+  head-of-line blocking. `RolloutPool` derives the root from `sample_ids` lineage
+  via `ancestor_id(..., 0)`; a launcher needs `>= K` free slots to take a full
+  group, otherwise the group splits into the largest contiguous chunks that fit.
+  Only the agentic path fans siblings out as separate tasks — async batch refill
+  already packs the whole group into one `Sample`, so the policy is inert there.
 - **Reward/advantage methods are not engine code** — `Part.compute_advantages` and
   `Sample.propagate_rewards` are called by the trainer after scoring. An engine
   fills generation fields such as `segment`, `conditions`, `primitive`, and

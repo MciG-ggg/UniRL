@@ -16,6 +16,7 @@ from unirl.config.validation import validate_memory_saver_contract
 from unirl.distributed.group.placement import placement, remote
 from unirl.distributed.tensor import hydrate
 from unirl.rollout.manager import RolloutManager, required_worker_concurrency, validate_worker_inflight
+from unirl.rollout.manager.dispatch import DEFAULT_AFFINITY_POLICY, validate_affinity_policy
 from unirl.train.stack import TrainStepResult
 from unirl.trainer.base import (
     BaseTrainer,
@@ -69,6 +70,7 @@ class AgenticTrainer(BaseTrainer):
         stop: Optional[List[str]] = None,
         per_worker_inflight: int = 8,
         mask_overflow_loss: bool = False,
+        affinity_policy: str = DEFAULT_AFFINITY_POLICY,
     ) -> None:
         configured_concurrency = cfg.get("worker_max_concurrency")
         worker_max_concurrency = (
@@ -85,6 +87,7 @@ class AgenticTrainer(BaseTrainer):
             sync_cfg=sync_cfg,
             per_worker_inflight=per_worker_inflight,
             worker_max_concurrency=worker_max_concurrency,
+            affinity_policy=affinity_policy,
         )
         super().__init__(
             cfg=cfg,
@@ -117,6 +120,7 @@ class AgenticTrainer(BaseTrainer):
                 launchers=launchers,
                 capacities=[self._per_worker_inflight] * len(launchers),
                 group_size=self._group_size,
+                affinity_policy=affinity_policy,
             )
             self._train_version = unwrap_replicated_int(
                 self.backend.get_optimizer_step_count(),
@@ -137,9 +141,11 @@ class AgenticTrainer(BaseTrainer):
         sync_cfg: Optional[DictConfig],
         per_worker_inflight: int,
         worker_max_concurrency: int,
+        affinity_policy: str,
     ) -> None:
         if batch_size <= 0:
             raise ValueError(f"batch_size must be positive; got {batch_size}")
+        validate_affinity_policy(affinity_policy)
         validate_worker_inflight(
             per_worker_inflight,
             worker_max_concurrency=worker_max_concurrency,

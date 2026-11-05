@@ -24,6 +24,9 @@ worker_max_concurrency: 10
 per_worker_inflight: 4 # per-slot trajectory cap (2 slots x 4 covers the 8 concurrent tasks)
 stop: ["</tool_call>"]
 mask_overflow_loss: false # true: overflow trajectories keep their baseline share but get no gradient
+# least_loaded: round-robin over the most-free slot. group_packing: keep each prompt's
+# siblings on one slot so the engine's prefix cache serves the shared prompt once.
+affinity_policy: least_loaded
 
 sampling:
   _target_: unirl.types.sampling.ARSamplingParams

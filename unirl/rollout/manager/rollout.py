@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
 
 from unirl.rollout.manager.buffers import CompleteGroups, PendingGroups, roots_of
-from unirl.rollout.manager.dispatch import RolloutPool
+from unirl.rollout.manager.dispatch import DEFAULT_AFFINITY_POLICY, RolloutPool
 from unirl.rollout.manager.filters import RolloutFilter, identity, validate_filter_output
 
 if TYPE_CHECKING:
@@ -28,9 +28,10 @@ class RolloutManager:
         capacities: Sequence[int],
         group_size: int,
         filter_fn: RolloutFilter = identity,
+        affinity_policy: str = DEFAULT_AFFINITY_POLICY,
     ) -> None:
         self._rollout = rollout
-        self._pool = RolloutPool(launchers, capacities)
+        self._pool = RolloutPool(launchers, capacities, affinity_policy=affinity_policy)
         self._group_size = int(group_size)
         self._pending = PendingGroups(group_size)
         self._complete = CompleteGroups()

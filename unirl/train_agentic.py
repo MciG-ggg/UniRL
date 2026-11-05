@@ -6,6 +6,7 @@ from __future__ import annotations
 import hydra
 from omegaconf import DictConfig
 
+from unirl.rollout.manager.dispatch import DEFAULT_AFFINITY_POLICY
 from unirl.trainer.agentic import AgenticTrainer
 from unirl.utils.graceful_shutdown import GracefulShutdown
 
@@ -36,6 +37,7 @@ def main(cfg: DictConfig) -> None:
             stop=cfg.get("stop"),
             per_worker_inflight=cfg.get("per_worker_inflight", 8),
             mask_overflow_loss=cfg.get("mask_overflow_loss", False),
+            affinity_policy=cfg.get("affinity_policy", DEFAULT_AFFINITY_POLICY),
         )
         guard.claim_signals()
         trainer.train(
